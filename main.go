@@ -24,11 +24,34 @@ func renderTemplate(w http.ResponseWriter, name string, data interface{}) error 
 	return nil
 }
 
+func loginValidation(name string, password string) bool {
+	var isValid bool
+	validUser := User{
+		Name:     "shieldz",
+		Password: "password",
+	}
+
+	if name != validUser.Name && password != validUser.Password {
+		isValid = false
+	} else {
+		isValid = true
+	}
+
+	return isValid
+}
+
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	user := User{
 		Name:     r.FormValue("username"),
 		Password: r.FormValue("password"),
+	}
+
+	isValid := loginValidation(user.Name, user.Password)
+
+	if isValid {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
 	}
 
 	err := renderTemplate(w, "login.html", user)
