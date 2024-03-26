@@ -26,6 +26,20 @@ func createUser(name string, password string) User {
 	}
 }
 
+func (u *User) saveUser() (int64, error) {
+	result, err := db.Exec("INSERT INTO user (username, password) VALUE (?, ?)", u.Name, u.Password)
+	if err != nil {
+		return 0, err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	return id, err
+}
+
 func renderTemplate(w http.ResponseWriter, name string, data interface{}) error {
 	tmpl, err := template.ParseGlob("view/*.html")
 	if err != nil {
@@ -53,6 +67,22 @@ func loginValidation(name string, password string) bool {
 	}
 
 	return isValid
+}
+
+func registerHandler(w http.ResponseWriter, r *http.Request) {
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+
+	user := createUser(username, password)
+	_, err := user.saveUser()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	err = renderTemplate(w, "register.html", user)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -106,5 +136,6 @@ func main() {
 
 	http.HandleFunc("/", frontPageHandler)
 	http.HandleFunc("/login", loginHandler)
+	http.HandleFunc("/register", registerHandler)
 	http.ListenAndServe(":8080", nil)
 }
