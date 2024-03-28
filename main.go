@@ -9,12 +9,18 @@ import (
 	"os"
 
 	"github.com/go-sql-driver/mysql"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
 	Id       int
 	Name     string
 	Password string
+}
+
+func hashPassword(password string) ([]byte, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	return hash, err
 }
 
 func intiliazeDB() (*sql.DB, error) {
@@ -47,11 +53,14 @@ func createUser(name string, password string) User {
 }
 
 func (u *User) saveUser(db *sql.DB) (int64, error) {
-	result, err := db.Exec("INSERT INTO User (username, password) VALUE (?, ?)", u.Name, u.Password)
+	hash, err := hashPassword(u.Password)
 	if err != nil {
 		return 0, err
 	}
-
+	result, err := db.Exec("INSERT INTO User (username, password) VALUE (?, ?)", u.Name, hash)
+	if err != nil {
+		return 0, err
+	}
 	id, err := result.LastInsertId()
 	if err != nil {
 		return 0, err
