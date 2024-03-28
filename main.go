@@ -11,12 +11,32 @@ import (
 	"github.com/go-sql-driver/mysql"
 )
 
-var db *sql.DB
-
 type User struct {
 	Id       int
 	Name     string
 	Password string
+}
+
+func intiliazeDB() (*sql.DB, error) {
+	cfg := mysql.Config{
+		User:   os.Getenv("DBUSER"),
+		Passwd: os.Getenv("DBPASS"),
+		Net:    "tcp",
+		Addr:   "127.0.0.1:3306",
+		DBName: "users",
+	}
+	db, err := sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		return nil, err
+	}
+
+	pingErr := db.Ping()
+
+	if pingErr != nil {
+		return nil, err
+	}
+
+	return db, nil
 }
 
 func createUser(name string, password string) User {
@@ -26,8 +46,8 @@ func createUser(name string, password string) User {
 	}
 }
 
-func (u *User) saveUser() (int64, error) {
-	result, err := db.Exec("INSERT INTO user (username, password) VALUE (?, ?)", u.Name, u.Password)
+func (u *User) saveUser(db *sql.DB) (int64, error) {
+	result, err := db.Exec("INSERT INTO User (username, password) VALUE (?, ?)", u.Name, u.Password)
 	if err != nil {
 		return 0, err
 	}
@@ -69,15 +89,17 @@ func loginValidation(name string, password string) bool {
 	return isValid
 }
 
-func registerHandler(w http.ResponseWriter, r *http.Request) {
+func registerHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
 	user := createUser(username, password)
-	_, err := user.saveUser()
+	id, err := user.saveUser(db)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+
+	user.Id = int(id)
 
 	err = renderTemplate(w, "register.html", user)
 	if err != nil {
@@ -86,7 +108,6 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
-
 	user := User{
 		Name:     r.FormValue("username"),
 		Password: r.FormValue("password"),
@@ -113,29 +134,15 @@ func frontPageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-
-	cfg := mysql.Config{
-		User:   os.Getenv("DBUSER"),
-		Passwd: os.Getenv("DBPASS"),
-		Net:    "tcp",
-		Addr:   "127.0.0.1:3306",
-		DBName: "users",
-	}
-	db, err := sql.Open("mysql", cfg.FormatDSN())
+	db, err := intiliazeDB()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	pingErr := db.Ping()
-
-	if pingErr != nil {
-		log.Fatal(pingErr)
-	}
-
-	fmt.Println("Database telah terkoneksi")
-
 	http.HandleFunc("/", frontPageHandler)
 	http.HandleFunc("/login", loginHandler)
-	http.HandleFunc("/register", registerHandler)
+	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+		registerHandler(w, r, db)
+	})
 	http.ListenAndServe(":8080", nil)
 }
