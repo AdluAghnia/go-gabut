@@ -39,7 +39,7 @@ func intiliazeDB() (*sql.DB, error) {
 	pingErr := db.Ping()
 
 	if pingErr != nil {
-		return nil, err
+		return nil, pingErr
 	}
 
 	return db, nil
@@ -82,20 +82,25 @@ func renderTemplate(w http.ResponseWriter, name string, data interface{}) error 
 	return nil
 }
 
-func loginValidation(name string, password string) bool {
-	var isValid bool
-	validUser := User{
-		Name:     "shieldz",
-		Password: "password",
+// TODO : Fix this Validator
+func loginValidation(user User, db *sql.DB) (bool, error) {
+	username := user.Name
+	Password, err := hashPassword(user.Password)
+	if err != nil {
+		return false, err
+	}
+	var storedPassword string
+
+	err = db.QueryRow("SELECT password from User WHERE username = ?", username).Scan(&storedPassword)
+	if err != nil {
+		return false, err
 	}
 
-	if name != validUser.Name && password != validUser.Password {
-		isValid = false
-	} else {
-		isValid = true
+	if string(Password) != storedPassword {
+		return false, nil
 	}
 
-	return isValid
+	return true, nil
 }
 
 func registerHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
@@ -116,20 +121,26 @@ func registerHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	}
 }
 
-func loginHandler(w http.ResponseWriter, r *http.Request) {
+func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	user := User{
 		Name:     r.FormValue("username"),
 		Password: r.FormValue("password"),
 	}
 
-	isValid := loginValidation(user.Name, user.Password)
-
-	if isValid {
-		http.Redirect(w, r, "/", http.StatusFound)
+	isValid, err := loginValidation(user, db)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "username or password is invalid", http.StatusUnauthorized)
+		} else {
+			log.Fatal(err)
+		}
+	}
+	if !isValid {
+		http.Error(w, "Unautherized", http.StatusUnauthorized)
 		return
 	}
 
-	err := renderTemplate(w, "login.html", user)
+	err = renderTemplate(w, "login.html", user)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -149,7 +160,9 @@ func main() {
 	}
 
 	http.HandleFunc("/", frontPageHandler)
-	http.HandleFunc("/login", loginHandler)
+	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		loginHandler(w, r, db)
+	})
 	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		registerHandler(w, r, db)
 	})
