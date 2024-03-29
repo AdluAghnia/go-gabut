@@ -82,21 +82,18 @@ func renderTemplate(w http.ResponseWriter, name string, data interface{}) error 
 	return nil
 }
 
-// TODO : Fix this Validator
+// TODO : Fix this Validator (DONE)
 func loginValidation(user User, db *sql.DB) (bool, error) {
 	username := user.Name
-	Password, err := hashPassword(user.Password)
-	if err != nil {
-		return false, err
-	}
-	var storedPassword string
+	var storedPassword []byte
 
-	err = db.QueryRow("SELECT password from User WHERE username = ?", username).Scan(&storedPassword)
+	err := db.QueryRow("SELECT password from User WHERE username = ?", username).Scan(&storedPassword)
 	if err != nil {
 		return false, err
 	}
 
-	if string(Password) != storedPassword {
+	err = bcrypt.CompareHashAndPassword(storedPassword, []byte(user.Password))
+	if err != nil {
 		return false, nil
 	}
 
@@ -120,11 +117,10 @@ func registerHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
-
-func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
-	user := User{
-		Name:     r.FormValue("username"),
-		Password: r.FormValue("password"),
+// TODO : Fix This Handler
+	err := renderTemplate(w, "login.html", user)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	isValid, err := loginValidation(user, db)
@@ -132,17 +128,14 @@ func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		if err == sql.ErrNoRows {
 			http.Error(w, "username or password is invalid", http.StatusUnauthorized)
 		} else {
-			log.Fatal(err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	}
-	if !isValid {
-		http.Error(w, "Unautherized", http.StatusUnauthorized)
 		return
 	}
 
-	err = renderTemplate(w, "login.html", user)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if isValid {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
 	}
 }
 
