@@ -117,7 +117,10 @@ func registerHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
+
 // TODO : Fix This Handler
+func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
+	user := createUser(r.FormValue("username"), r.FormValue("password"))
 	err := renderTemplate(w, "login.html", user)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
