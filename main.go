@@ -25,11 +25,12 @@ func hashPassword(password string) ([]byte, error) {
 
 func intiliazeDB() (*sql.DB, error) {
 	cfg := mysql.Config{
-		User:   os.Getenv("DBUSER"),
-		Passwd: os.Getenv("DBPASS"),
-		Net:    "tcp",
-		Addr:   "127.0.0.1:3306",
-		DBName: "users",
+		User:                 os.Getenv("DBUSER"),
+		Passwd:               os.Getenv("DBPASS"),
+		Net:                  "tcp",
+		Addr:                 "127.0.0.1:3306",
+		DBName:               "gobut",
+		AllowNativePasswords: true,
 	}
 	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
@@ -120,26 +121,28 @@ func registerHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 
 // TODO : Fix This Handler
 func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
-	user := createUser(r.FormValue("username"), r.FormValue("password"))
-	err := renderTemplate(w, "login.html", user)
+	if r.Method == http.MethodPost {
+		user := createUser(r.FormValue("username"), r.FormValue("password"))
+		isValid, err := loginValidation(user, db)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "username or password is invalid", http.StatusUnauthorized)
+			} else {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		if isValid {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+
+	}
+	err := renderTemplate(w, "login.html", nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	isValid, err := loginValidation(user, db)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "username or password is invalid", http.StatusUnauthorized)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		return
-	}
-
-	if isValid {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
 }
 
 func frontPageHandler(w http.ResponseWriter, r *http.Request) {
