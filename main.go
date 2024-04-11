@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -53,6 +54,16 @@ func createUser(name string, password string) User {
 	}
 }
 
+func (u *User) validateRegister() (bool, error) {
+	// CHECK IF PASSWORD HAVE MORE THAN 6 characters
+	valid := len(u.Name) >= 3 && len(u.Password) >= 6
+	if !valid {
+		return valid, errors.New("username and password is invalid")
+	} else {
+		return valid, nil
+	}
+}
+
 func (u *User) saveUser(db *sql.DB) (int64, error) {
 	hash, err := hashPassword(u.Password)
 	if err != nil {
@@ -70,15 +81,15 @@ func (u *User) saveUser(db *sql.DB) (int64, error) {
 	return id, err
 }
 
-func renderTemplate(w http.ResponseWriter, name string, data interface{}) error {
+func renderTemplate(w http.ResponseWriter, name string) error {
 	tmpl, err := template.ParseGlob("view/*.html")
 	if err != nil {
-		return fmt.Errorf("error parsing template : %v", http.StatusInternalServerError)
+		return fmt.Errorf("error parsing template : %v", err)
 	}
 
-	err = tmpl.ExecuteTemplate(w, name, data)
+	err = tmpl.ExecuteTemplate(w, name, nil)
 	if err != nil {
-		return fmt.Errorf("error parsing template: %q", http.StatusInternalServerError)
+		return fmt.Errorf("error parsing template: %q", err)
 	}
 	return nil
 }
@@ -102,21 +113,32 @@ func loginValidation(user User, db *sql.DB) (bool, error) {
 }
 
 func registerHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
-	username := r.FormValue("username")
-	password := r.FormValue("password")
+	if r.Method == http.MethodPost {
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		user := createUser(username, password)
 
-	user := createUser(username, password)
-	id, err := user.saveUser(db)
+		isValid, err := user.validateRegister()
+		if err != nil {
+			log.Println(err)
+		}
+
+		if isValid {
+			id, err := user.saveUser(db)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			log.Printf("CREATING USER FOR ID %d SUCCES", id)
+
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+		}
+	}
+
+	err := renderTemplate(w, "register.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	user.Id = int(id)
-
-	err = renderTemplate(w, "register.html", user)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
 }
 
 // TODO : Fix This Handler
@@ -138,7 +160,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		}
 
 	}
-	err := renderTemplate(w, "login.html", nil)
+	err := renderTemplate(w, "login.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -146,7 +168,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 }
 
 func frontPageHandler(w http.ResponseWriter, r *http.Request) {
-	err := renderTemplate(w, "index.html", nil)
+	err := renderTemplate(w, "index.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
