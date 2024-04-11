@@ -54,14 +54,36 @@ func createUser(name string, password string) User {
 	}
 }
 
-func (u *User) validateRegister() (bool, error) {
+func (u *User) validateRegister(db *sql.DB) (bool, error) {
 	// CHECK IF PASSWORD HAVE MORE THAN 6 characters
 	valid := len(u.Name) >= 3 && len(u.Password) >= 6
-	if !valid {
-		return valid, errors.New("username and password is invalid")
-	} else {
-		return valid, nil
+	// Check if username already exist in the database
+	statment, err := db.Prepare("SELECT COUNT(*) FROM User WHERE username = ? ")
+
+	if err != nil {
+		return false, err
 	}
+	defer statment.Close()
+
+	var count int
+	err = statment.QueryRow(u.Name).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	if count != 0 {
+		return false, errors.New("username already exist")
+	}
+
+	if !valid {
+		return false, errors.New("check your username and password again")
+	}
+
+	if valid && count == 0 {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func (u *User) saveUser(db *sql.DB) (int64, error) {
@@ -81,13 +103,13 @@ func (u *User) saveUser(db *sql.DB) (int64, error) {
 	return id, err
 }
 
-func renderTemplate(w http.ResponseWriter, name string) error {
+func renderTemplate(w http.ResponseWriter, name string, err_message string) error {
 	tmpl, err := template.ParseGlob("view/*.html")
 	if err != nil {
 		return fmt.Errorf("error parsing template : %v", err)
 	}
 
-	err = tmpl.ExecuteTemplate(w, name, nil)
+	err = tmpl.ExecuteTemplate(w, name, err_message)
 	if err != nil {
 		return fmt.Errorf("error parsing template: %q", err)
 	}
@@ -118,9 +140,9 @@ func registerHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		password := r.FormValue("password")
 		user := createUser(username, password)
 
-		isValid, err := user.validateRegister()
+		isValid, err := user.validateRegister(db)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			fmt.Fprintln(w, err.Error())
 			return
 		}
 
@@ -133,10 +155,10 @@ func registerHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 			log.Printf("CREATING USER FOR ID %d SUCCES", id)
 
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
+
 		}
 	}
-
-	err := renderTemplate(w, "register.html")
+	err := renderTemplate(w, "register.html", "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -162,7 +184,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		}
 
 	}
-	err := renderTemplate(w, "login.html")
+	err := renderTemplate(w, "login.html", "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -170,7 +192,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 }
 
 func frontPageHandler(w http.ResponseWriter, r *http.Request) {
-	err := renderTemplate(w, "index.html")
+	err := renderTemplate(w, "index.html", "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
