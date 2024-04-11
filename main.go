@@ -120,13 +120,15 @@ func registerHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 
 		isValid, err := user.validateRegister()
 		if err != nil {
-			log.Println(err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		if isValid {
 			id, err := user.saveUser(db)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
 			log.Printf("CREATING USER FOR ID %d SUCCES", id)
 
