@@ -77,16 +77,11 @@ func (u *User) validateRegister(db *sql.DB) (bool, error) {
 	if count != 0 {
 		return false, errors.New("username already exist")
 	}
-
-	if !valid {
-		return false, errors.New("check your username and password again")
-	}
-
-	if len(u.Name) <= 3 {
+	if len(u.Name) < 3 {
 		return false, errors.New("username should atleast contains 3 characters")
 	}
 
-	if len(u.Password) <= 6 {
+	if len(u.Password) < 6 {
 		return false, errors.New("password should atleast contains 6 characters")
 	}
 
