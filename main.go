@@ -19,11 +19,13 @@ type User struct {
 	Password string
 }
 
+// hashing normal password into sha256
 func hashPassword(password string) ([]byte, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), 14)
 	return hash, err
 }
 
+// intiliazed database and run database
 func intiliazeDB() (*sql.DB, error) {
 	cfg := mysql.Config{
 		User:                 os.Getenv("DBUSER"),
@@ -54,6 +56,7 @@ func createUser(name string, password string) User {
 	}
 }
 
+// check if the register user is valid
 func (u *User) validateRegister(db *sql.DB) (bool, error) {
 	// CHECK IF PASSWORD HAVE MORE THAN 6 characters
 	valid := len(u.Name) >= 3 && len(u.Password) >= 6
@@ -79,6 +82,14 @@ func (u *User) validateRegister(db *sql.DB) (bool, error) {
 		return false, errors.New("check your username and password again")
 	}
 
+	if len(u.Name) <= 3 {
+		return false, errors.New("username should atleast contains 3 characters")
+	}
+
+	if len(u.Password) <= 6 {
+		return false, errors.New("password should atleast contains 6 characters")
+	}
+
 	if valid && count == 0 {
 		return true, nil
 	}
@@ -86,6 +97,7 @@ func (u *User) validateRegister(db *sql.DB) (bool, error) {
 	return false, nil
 }
 
+// Save user to the database
 func (u *User) saveUser(db *sql.DB) (int64, error) {
 	hash, err := hashPassword(u.Password)
 	if err != nil {
@@ -103,6 +115,7 @@ func (u *User) saveUser(db *sql.DB) (int64, error) {
 	return id, err
 }
 
+// rendering html template
 func renderTemplate(w http.ResponseWriter, name string, err_message string) error {
 	tmpl, err := template.ParseGlob("view/*.html")
 	if err != nil {
@@ -116,7 +129,6 @@ func renderTemplate(w http.ResponseWriter, name string, err_message string) erro
 	return nil
 }
 
-// TODO : Fix this Validator (DONE)
 func loginValidation(user User, db *sql.DB) (bool, error) {
 	username := user.Name
 	var storedPassword []byte
