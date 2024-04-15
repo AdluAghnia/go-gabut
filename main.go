@@ -224,6 +224,70 @@ func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 
 }
 
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("session_token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			fmt.Fprintf(w, "Unauthorized  :%v", http.StatusUnauthorized)
+			return
+		}
+
+		fmt.Fprintf(w, "Bad Request : %v", http.StatusBadRequest)
+	}
+
+	sessionToken := c.Value
+
+	delete(sessions, sessionToken)
+
+	http.SetCookie(w, &http.Cookie{
+		Name:    "session_token",
+		Value:   "",
+		Expires: time.Now(),
+	})
+}
+
+func refresh(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("session_token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			fmt.Fprintln(w, http.StatusUnauthorized)
+			return
+		}
+		fmt.Fprintln(w, http.StatusBadRequest)
+		return
+	}
+
+	sessionToken := c.Value
+	userSession, exist := sessions[sessionToken]
+	if !exist {
+		fmt.Fprintln(w, http.StatusUnauthorized)
+		return
+	}
+
+	if userSession.isExpired() {
+		delete(sessions, sessionToken)
+		fmt.Fprintln(w, http.StatusUnauthorized)
+		return
+	}
+
+	newSessionToken := uuid.NewString()
+	expiresAt := time.Now().Add(120 * time.Second)
+
+	sessions[newSessionToken] = session{
+		username: userSession.username,
+		expiry:   expiresAt,
+	}
+
+	delete(sessions, sessionToken)
+
+	http.SetCookie(w, &http.Cookie{
+		Name:    "session_token",
+		Value:   newSessionToken,
+		Expires: time.Now().Add(120 * time.Second),
+	})
+
+}
+
 func frontPageHandler(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie("session_token")
 	if err != nil {
@@ -267,5 +331,7 @@ func main() {
 	http.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		registerHandler(w, r, db)
 	})
+	http.HandleFunc("/logout", logoutHandler)
+	http.HandleFunc("/refresh", refresh)
 	http.ListenAndServe(":8080", nil)
 }
