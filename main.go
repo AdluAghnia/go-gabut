@@ -8,8 +8,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -17,6 +19,17 @@ type User struct {
 	Id       int
 	Name     string
 	Password string
+}
+
+type session struct {
+	username string
+	expiry   time.Time
+}
+
+var sessions = map[string]session{}
+
+func (s session) isExpired() bool {
+	return s.expiry.Before(time.Now())
 }
 
 // hashing normal password into sha256
@@ -186,8 +199,21 @@ func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 			return
 		}
 		if isValid {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
+			sessionToken := uuid.NewString()
+			expiresAt := time.Now().Add(120 * time.Second)
+
+			sessions[sessionToken] = session{
+				username: user.Name,
+				expiry:   expiresAt,
+			}
+
+			http.SetCookie(w, &http.Cookie{
+				Name:    "session_token",
+				Value:   sessionToken,
+				Expires: expiresAt,
+			})
+
+			log.Println("creating cookies success")
 		}
 
 	}
@@ -199,7 +225,30 @@ func loginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 }
 
 func frontPageHandler(w http.ResponseWriter, r *http.Request) {
-	err := renderTemplate(w, "index.html", "")
+	c, err := r.Cookie("session_token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			fmt.Fprintln(w, http.StatusUnauthorized)
+			return
+		}
+		fmt.Fprintln(w, http.StatusBadRequest)
+		return
+	}
+
+	sessionToken := c.Value
+	userSession, exist := sessions[sessionToken]
+	if !exist {
+		fmt.Fprintln(w, http.StatusUnauthorized)
+		return
+	}
+
+	if userSession.isExpired() {
+		delete(sessions, sessionToken)
+		fmt.Fprintln(w, http.StatusUnauthorized)
+		return
+	}
+
+	err = renderTemplate(w, "index.html", "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
